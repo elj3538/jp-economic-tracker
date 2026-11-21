@@ -139,20 +139,60 @@ def fetch_fred_series(series_id: str, cache_dir: Path | None = None, use_cache: 
     return []
 
 
+def _parse_wareki_date(s: str) -> str | None:
+    s = s.strip()
+    if not s or "." not in s:
+        return None
+    era = s[0].upper()
+    parts = s[1:].split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return None
+    y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+    base = {"R": 2018, "H": 1988, "S": 1925}.get(era)
+    if base is None:
+        return None
+    return f"{base + y:04d}-{m:02d}-{d:02d}"
+
+
 def fetch_jgb10y_daily(cache_dir: Path | None = None, use_cache: bool = True) -> list[dict[str, Any]]:
-    try:
-        resp = _http_get("https://stooq.com/q/d/l/?s=10yjp.b&i=d", timeout=15)
-        if resp.status_code == 200 and "Date,Open" in resp.text:
-            df = pd.read_csv(io.StringIO(resp.text))
-            pts = []
-            for d_raw, v_raw in zip(df["Date"], df["Close"]):
-                if not pd.isna(v_raw):
-                    pts.append({"date": str(d_raw)[:10], "value": round(float(v_raw), 3)})
-            if pts:
-                return pts[-260:]
-    except Exception:
-        pass
+    """財務省公式CSV（jgbcm_all.csv + jgbcm.csv）から最新の日本10年国債利回り日次推移を取得する。"""
+    by_date: dict[str, float] = {}
+    for url in (
+        "https://www.mof.go.jp/jgbs/reference/interest_rate/data/jgbcm_all.csv",
+        "https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm.csv",
+    ):
+        try:
+            resp = _http_get(url, timeout=15)
+            if resp.status_code != 200:
+                continue
+            for line in resp.content.decode("cp932", errors="ignore").splitlines():
+                cols = [c.strip() for c in line.split(",")]
+                if len(cols) <= 10:
+                    continue
+                dt = _parse_wareki_date(cols[0])
+                if not dt or cols[10] in ("", "-"):
+                    continue
+                try:
+                    by_date[dt] = round(float(cols[10]), 3)
+                except ValueError:
+                    continue
+        except Exception:
+            continue
+    if by_date:
+        return [{"date": d, "value": by_date[d]} for d in sorted(by_date.keys())[-90:]]
     return fetch_fred_series("IRLTLT01JPM156N", cache_dir=cache_dir, use_cache=use_cache)
+
+
+def _fetch_yf_series(symbol: str) -> list[dict[str, Any]]:
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(symbol).history(period="4mo", interval="1d")
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            return []
+        close = hist["Close"].dropna()
+        return [{"date": idx.strftime("%Y-%m-%d"), "value": round(float(v), 4)} for idx, v in close.items()]
+    except Exception:
+        return []
 
 
 def fetch_all_jp_indicators(
@@ -222,20 +262,24 @@ def fetch_all_jp_indicators(
 
 def fetch_market_cards(cache_dir: Path | None = None, use_cache: bool = True) -> list[dict[str, Any]]:
     specs = [
-        {"id": "nikkei225", "label": "日経平均株価", "unit": "円", "digits": 0, "fred_id": "NIKKEI225", "source": "FRED (日経)"},
-        {"id": "usdjpy", "label": "ドル円", "unit": "円", "digits": 2, "fred_id": "DEXJPUS", "source": "FRED (FRB H.10)"},
-        {"id": "jgb10y", "label": "日本10年国債利回り", "unit": "%", "digits": 2, "fred_id": "_JGB10Y_", "source": "stooq / FRED"},
-        {"id": "us10y", "label": "米10年国債利回り", "unit": "%", "digits": 2, "fred_id": "DGS10", "source": "FRED (米財務省)"},
-        {"id": "sp500", "label": "S&P 500", "unit": "", "digits": 1, "fred_id": "SP500", "source": "FRED (S&P DJI)"},
-        {"id": "wti", "label": "WTI原油", "unit": "ドル", "digits": 2, "fred_id": "DCOILWTICO", "source": "FRED (EIA)"},
+        {"id": "nikkei225", "label": "日経平均株価", "unit": "円", "digits": 0, "yf": "^N225", "fred_id": "NIKKEI225", "source": "Yahoo Finance / FRED"},
+        {"id": "usdjpy", "label": "ドル円", "unit": "円", "digits": 2, "yf": "JPY=X", "fred_id": "DEXJPUS", "source": "Yahoo Finance (日次)"},
+        {"id": "jgb10y", "label": "日本10年国債利回り", "unit": "%", "digits": 2, "yf": None, "fred_id": "_JGB10Y_", "source": "財務省（日次国債金利）"},
+        {"id": "us10y", "label": "米10年国債利回り", "unit": "%", "digits": 2, "yf": "^TNX", "fred_id": "DGS10", "source": "Yahoo Finance / 米財務省"},
+        {"id": "sp500", "label": "S&P 500", "unit": "", "digits": 1, "yf": "^GSPC", "fred_id": "SP500", "source": "Yahoo Finance (日次)"},
+        {"id": "wti", "label": "WTI原油", "unit": "ドル", "digits": 2, "yf": "CL=F", "fred_id": "DCOILWTICO", "source": "Yahoo Finance (先物日次)"},
     ]
     cards: list[dict[str, Any]] = []
     for sp in specs:
-        pts = (
-            fetch_jgb10y_daily(cache_dir=cache_dir, use_cache=use_cache)
-            if sp["fred_id"] == "_JGB10Y_"
-            else fetch_fred_series(sp["fred_id"], cache_dir=cache_dir, use_cache=use_cache)
-        )
+        if sp["fred_id"] == "_JGB10Y_":
+            pts = fetch_jgb10y_daily(cache_dir=cache_dir, use_cache=use_cache)
+        else:
+            yf_pts = _fetch_yf_series(sp["yf"]) if sp.get("yf") else []
+            fr_pts = fetch_fred_series(sp["fred_id"], cache_dir=cache_dir, use_cache=use_cache)
+            if yf_pts and (not fr_pts or yf_pts[-1]["date"] >= fr_pts[-1]["date"]):
+                pts = yf_pts
+            else:
+                pts = fr_pts
         if not pts:
             cards.append({**sp, "latest": None, "prev": None, "change": None, "change_pct": None, "date": None, "spark": []})
             continue
