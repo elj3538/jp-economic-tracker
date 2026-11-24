@@ -100,7 +100,7 @@ def generate_site(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>日本経済指標トラッカー（28指標・e-Stat/FRED自動更新）</title>
+<title>日本経済指標トラッカー（{len(slim_indicators)}指標・e-Stat/FRED自動更新）</title>
 <style>
 :root {{
   --bg: #f5f7fb; --surface: #ffffff; --border: #dfe5ef; --text: #162032; --muted: #5d6b82;
@@ -395,7 +395,7 @@ function renderTabs() {{
   document.getElementById("cat-tabs").innerHTML = tabs.map(([k, lbl]) =>
     `<button class="tab-btn ${{activeCat === k ? "active" : ""}}" onclick="setCat('${{k}}')">${{lbl}}</button>`
   ).join("");
-  document.getElementById("cat-guide").textContent = BUNDLE.category_guides[activeCat] || "全28指標を表示しています。カードをクリックすると詳細チャートが開きます。";
+  document.getElementById("cat-guide").textContent = BUNDLE.category_guides[activeCat] || `全${{BUNDLE.indicators.length}}指標を表示しています。カードをクリックすると詳細チャートが開きます。`;
 }}
 function setCat(c) {{ activeCat = c; renderTabs(); renderCards(); }}
 function toggleFav(ev, id) {{

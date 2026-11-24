@@ -1,4 +1,4 @@
-"""日本経済指標28項目および日銀金融政策決定会合スケジュールのマスター定義。"""
+"""日本経済指標（全27項目）および日銀金融政策決定会合スケジュールのマスター定義。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ INDICATORS_DEF: list[dict[str, Any]] = [
         "ref_line": 0.0, "description": "日本経済全体の成長ペース（物価変動を除いた実質ベース）。プラス圏維持が景気拡大の基本。",
     },
     {
-        "id": "leading_ci", "source_type": "estat", "code": "0706010400000090010", "cycle": "leading",
+        "id": "leading_ci", "source_type": "estat", "code": "0706010500000090020", "cycle": "leading",
         "category": "景気", "name": "景気動向指数 CI先行指数", "shortName": "CI先行指数",
         "unit": "", "digits": 1, "frequency": "monthly", "betterWhen": "up", "importance": 3,
         "ref_line": 100.0, "description": "景気に数か月先行して動く主要指標を合成した指数（2020年=100）。転換点の早期察知に有用。",
