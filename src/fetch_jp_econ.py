@@ -281,13 +281,14 @@ def fetch_market_cards(cache_dir: Path | None = None, use_cache: bool = True) ->
             else:
                 pts = fr_pts
         if not pts:
-            cards.append({**sp, "latest": None, "prev": None, "change": None, "change_pct": None, "date": None, "spark": []})
+            cards.append({**sp, "latest": None, "prev": None, "change": None, "change_pct": None, "date": None, "spark": [], "spark_dates": []})
             continue
         latest_d, latest_v = pts[-1]["date"], pts[-1]["value"]
         prev_v = pts[-2]["value"] if len(pts) >= 2 else latest_v
         chg = round(latest_v - prev_v, 4)
         chg_pct = round((latest_v / prev_v - 1.0) * 100.0, 2) if prev_v != 0 else None
         spark = [round(p["value"], 3) for p in pts[-60:]]
+        spark_dates = [p["date"] for p in pts[-60:]]
         cards.append(
             {
                 "id": sp["id"],
@@ -301,6 +302,7 @@ def fetch_market_cards(cache_dir: Path | None = None, use_cache: bool = True) ->
                 "change_pct": chg_pct,
                 "date": latest_d,
                 "spark": spark,
+                "spark_dates": spark_dates,
             }
         )
     return cards
